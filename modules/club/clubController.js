@@ -4,8 +4,8 @@ import Tag from '../tag/tagModel.js';
 import User from '../user/user.model.js';
 // Create a new club
 export const createClub = async (req, res) => {
-    const { name, email, description, members, images, websiteLink } = req.body;
-    //if (!req.user.isAdmin) return res.status(403).send('Unauthorized');
+    const { name, description, email, members, images, websiteLink } = req.body;
+    if (!req.user.isAdmin) return res.status(403).send('Unauthorized');
     try {
         const newClub = new Club({ name, description, email, members, images, websiteLink });
         await newClub.save();
@@ -22,7 +22,7 @@ export const editClub = async (req, res) => {
     try {
         const club = await Club.findById(id);
         if (!club) return res.status(404).json({ message: 'Club not found' });
-        if (!req.user.isAdmin || ! req.user.email === club.email) return res.status(403).send('Unauthorized');
+        if (!req.user.isAdmin) return res.status(403).send('Unauthorized');
         Object.assign(club, updates);
         await club.save();
         res.status(200).json(club);
@@ -37,7 +37,7 @@ export const deleteClub = async (req, res) => {
     try {
         const club = await Club.findById(id);
         if (!club) return res.status(404).json({ message: 'Club not found' });
-        if (!req.user.isAdmin || ! req.user.email === club.email) return res.status(403).send('Unauthorized');
+        if (!req.user.isAdmin) return res.status(403).send('Unauthorized');
         await club.remove();
         res.status(200).json({ message: 'Club deleted' });
     } catch (err) {
@@ -67,7 +67,7 @@ export const changeAuthority = async (req, res) => {
     try {
         const club = await Club.findById(id);
         if (!club) return res.status(404).json({ message: 'Club not found' });
-        if (!req.user.isAdmin || ! req.user.email === club.email) return res.status(403).send('Unauthorized');
+        if (!req.user.isAdmin) return res.status(403).send('Unauthorized');
         const member = club.members.find(member => member.userId === userId);
         if (!member) return res.status(404).json({ message: 'Member not found' });
         member.responsibility = newRole;
@@ -96,8 +96,8 @@ export const getClubDetail = async (req, res) => {
     try {
         console.log("Fetching club from database...");
         const clubDoc = await Club.findById(id)
-            .populate('events')                // Populate all event details
-            .populate('merch');                // Populate all merch details
+            .populate('events')               // Populate all event details
+            .populate('merch');               // Populate all merch details
 
         if (!clubDoc) {
             console.log("Club not found.");
@@ -154,9 +154,9 @@ export const addMerch = async (req, res) => {
         const club = await Club.findById(clubId);
         if (!club) return res.status(404).json({ message: "Club not found" });
 
-        // Only the club can add merch
-        if (club._id !== userId) {
-            return res.status(403).json({ message: "Unauthorized: Only the club can add merch" });
+        // Only the secretary can add merch
+        if (club.secretary.toString() !== userId) {
+            return res.status(403).json({ message: "Unauthorized: Only the secretary can add merch" });
         }
 
         // Create new merch item
@@ -180,7 +180,7 @@ export const addMerch = async (req, res) => {
     }
 };
 
-//  Delete Merch from a Club (Only club)
+//  Delete Merch from a Club (Only Secretary)
 export const deleteMerch = async (req, res) => {
     try {
         const { clubId, merchId } = req.params;
@@ -189,9 +189,9 @@ export const deleteMerch = async (req, res) => {
         const club = await Club.findById(clubId);
         if (!club) return res.status(404).json({ message: "Club not found" });
 
-        // ✅ Check if the logged-in user is the club itself
-        if (club._id !== userId) {
-            return res.status(403).json({ message: "Unauthorized: Only the club can delete merch" });
+        // ✅ Check if the logged-in user is the club's secretary
+        if (club.secretary.toString() !== userId) {
+            return res.status(403).json({ message: "Unauthorized: Only the secretary can delete merch" });
         }
 
         // ✅ Remove the merch item

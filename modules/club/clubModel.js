@@ -20,9 +20,9 @@ const merchSchema = new Schema({
 // Club schema
 const clubSchema = new Schema({
     name: { type: String, unique: true, required: true },
+    email: { type: String, unique: true, require: true },
     description: { type: String, required: true }, 
-    email: { type: String, required: true },
-    isClub: { type: Boolean, default: true, set: () => true, immutable: true },
+    secretary : { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Club secretary (user)
     members: [
         {
             userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -37,19 +37,14 @@ const clubSchema = new Schema({
     followers:[{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
     tag: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Tag' }], 
-    
-    refreshToken: {
-        type: String,
-        select: false, // prevents it from being sent in queries unless explicitly selected
-    },
 
 });
 
 const Club = mongoose.model('Club', clubSchema);
 export default Club;
 
-export const findClubWithEmail = async function (email) {
-    const user = await Club.findOne({ email });
-    console.log("found user with email", user);
-    return user || false;
-};
+export const findClubWithEmail = async (email) => {
+    const club = await Club.findOne({ email });
+    console.log("found club with email", club);
+    return club || false;
+}

@@ -1,13 +1,12 @@
 // helpers/getAccessTokenByEmail.js
 import axios from 'axios';
 import User from '../modules/user/user.model.js';// adjust path as needed
-import Club from '../modules/club/clubModel.js';
 
 const tenant_id=process.env.AZURE_TENANT_ID;
 
 export const getAccessTokenByEmail = async (email) => {
     try {
-        const user = await Club.findOne({ email }).select('+refreshToken');
+        const user = await User.findOne({ email }).select('+refreshToken');
 
         if (!user || !user.refreshToken) {
             throw new Error('User not found or refresh token missing');

@@ -6,7 +6,6 @@ import catchAsync from "../../utils/catchAsync.js";
 import {
     mobileRedirectHandler,
     logoutHandler,
-    getUser,
 } from "./auth_controller.js";
 
 //not used
@@ -15,7 +14,8 @@ import {
 
 //router.get("/login/redirect/", catchAsync(redirectHandler));
 router.get("/login/redirect/mobile", catchAsync(mobileRedirectHandler));
-router.post("/getuser", getUser)
+
 router.get("/logout", logoutHandler);
 
 export default router;
+

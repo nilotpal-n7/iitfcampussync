@@ -63,10 +63,10 @@ export const uploadToOneDrive = catchAsync(async (req, res, next) => {
         return next(new AppError(400, "Currently only 'club' category is supported"));
     }
 
-    const club = await Club.findById(referenceId)
-    if (!club) return next(new AppError(404, "Club not found"));
+    const club = await Club.findById(referenceId).populate("secretary");
+    if (!club || !club.secretary) return next(new AppError(404, "Club or Secretary not found"));
 
-    const accessToken = await getAccessTokenByEmail(club.email);
+    const accessToken = await getAccessTokenByEmail(club.secretary.email);
     if (!accessToken) return next(new AppError(403, "Access token not found"));
 
     // Check storage space for all files
@@ -161,7 +161,7 @@ export const uploadToOneDrive = catchAsync(async (req, res, next) => {
                 mimeType: file.mimetype,
                 size: file.size,
                 link: downloadLink,
-                uploadedBy: club._id,
+                uploadedBy: club.secretary._id,
                 visibility: validVisibility
             });
 
@@ -211,6 +211,7 @@ export const listClubFiles = catchAsync(async (req, res, next) => {
     if (!clubId || !viewerEmail) return next(new AppError(400, "Club ID and viewerEmail are required"));
 
     const club = await Club.findById(clubId)
+        .populate("secretary")
         .populate("members.userId")
         .populate({
             path: "files",
@@ -219,7 +220,7 @@ export const listClubFiles = catchAsync(async (req, res, next) => {
 
     if (!club) return next(new AppError(404, "Club not found"));
 
-    const isClub = club.email === viewerEmail;
+    const isSecretary = club.secretary?.email === viewerEmail;
     const isMember = club.members.some(member => member.userId?.email === viewerEmail);
 
     let files = club.files; // First try retrieving files from the Club model
@@ -229,7 +230,7 @@ export const listClubFiles = catchAsync(async (req, res, next) => {
         files = await File.find({
             category: "club",
             referenceId: clubId,
-            ...(isClub || isMember ? {} : { visibility: "public" }) // Show only club files for non-members
+            ...(isSecretary || isMember ? {} : { visibility: "public" }) // Show only public files for non-members
         }).sort({ uploadedAt: -1 });
     }
 
@@ -254,13 +255,13 @@ export const downloadClubFile = catchAsync(async (req, res, next) => {
         return res.status(200).json({ downloadLink: fileDoc.link });
     }
 
-    const club = await Club.findById(clubId).populate("members.userId");
+    const club = await Club.findById(clubId).populate("secretary").populate("members.userId");
     if (!club) return next(new AppError(404, "Associated club not found"));
 
-    const isClub = club.email === viewerEmail;
+    const isSecretary = club.secretary?.email === viewerEmail;
     const isMember = club.members?.some(member => member.userId?.email === viewerEmail);
 
-    if (isClub || isMember) {
+    if (isSecretary || isMember) {
         return res.status(200).json({ downloadLink: fileDoc.link });
     }
 
@@ -276,10 +277,10 @@ export const getOneDriveStorageInfo = catchAsync(async (req, res, next) => {
         return next(new AppError(400, "Club ID is required"));
     }
 
-    const club = await Club.findById(clubId);
-    if (!club) return next(new AppError(404, "Club not found"));
+    const club = await Club.findById(clubId).populate("secretary");
+    if (!club || !club.secretary) return next(new AppError(404, "Club or Secretary not found"));
 
-    const accessToken = await getAccessTokenByEmail(club.email);
+    const accessToken = await getAccessTokenByEmail(club.secretary.email);
     if (!accessToken) {
         return next(new AppError(403, "Access token not found for this user"));
     }
@@ -324,15 +325,15 @@ export const deleteClubFile = catchAsync(async (req, res, next) => {
     const fileDoc = await File.findById(fileId);
     if (!fileDoc) return next(new AppError(404, "File not found"));
     
-    const club = await Club.findById(fileDoc.referenceId);
+    const club = await Club.findById(fileDoc.referenceId).populate("secretary");
     if (!club) return next(new AppError(404, "Associated club not found"));
     // console.log("club", club);
     // console.log("fileDoc", fileDoc);
     // console.log("userEmail", userEmail);
-    // console.log("club.email", club.email);    
-    // Only club can delete files
-    if (club.email.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
-        return next(new AppError(403, "Only the club can delete files"));
+    // console.log("club.secretary.email", club.secretary.email);    
+    // Only secretary can delete files
+    if (club.secretary?.email.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+        return next(new AppError(403, "Only the club secretary can delete files"));
     }
     
     try {

@@ -15,7 +15,7 @@ const tenant_id = process.env.AZURE_TENANT_ID;
 import { findUserWithEmail, getUserFromToken, validateUser } from "../user/user.model.js";
 import User from "../user/user.model.js";
 import Tag from "../tag/tagModel.js"; // Import Tag model for fetching tag names
-import Club, { findClubWithEmail } from "../club/clubModel.js";
+import { findClubWithEmail } from "../club/clubModel.js"
 
 // Fetch department information using Microsoft Graph API
 const getDepartment = async (access_token) => {
@@ -98,97 +98,84 @@ export const mobileRedirectHandler = async (req, res, next) => {
         }
 
         console.log("User details retrieved:", userFromToken.data);
+        const clubUser = await findClubWithEmail(userFromToken.data.mail)
+        const rollNumber = userFromToken.data.surname;
 
-        const isClub = userFromToken.data.isClub;
-        console.log("Checking if club already exists in database...");
-        const existingClub = isClub ? await findClubWithEmail(userFromToken.data.mail) : null;
+        if (!clubUser && !rollNumber) {
+            console.error("Roll number missing in user data.");
+            throw new AppError(401, "Sign in using Institute Account");
+        }
 
-        let userToBeUsed;
+        console.log("Checking if user already exists in database...");
+        let existingUser = await findUserWithEmail(userFromToken.data.mail);
 
-        if(existingClub) {
-            userToBeUsed = existingClub;
+        if (!existingUser) {
+            console.log("User not found. Creating a new user...");
+            const department = !clubUser ? await getDepartment(accessToken) : clubUser.name;
 
+            const userData = {
+                name: userFromToken.data.displayName,
+                email: userFromToken.data.mail,
+                rollNumber: rollNumber ?? 0,
+                degree: userFromToken.data.jobTitle,
+                semester: !clubUser ? calculateSemester(rollNumber) : 0,
+                department: department,
+                role: !clubUser ? "normal" : "higher_authority",
+                isClub: !clubUser ? false : true,
+            };
+
+            console.log("Validating new user data...");
+            const { error } = validateUser(userData);
+            if (error) {
+                console.error("User data validation failed:", error.message);
+                throw new AppError(400, error.message);
+            }
+
+            console.log("Saving new user to database...");
+            const newUser = !clubUser ? new User(userData) : new User({_id: clubUser._id, ...userData});
+            existingUser = await newUser.save();
+            console.log("New user created successfully:", existingUser);
+        }
+
+        console.log("Fetching user from database...");
+        const user = existingUser.toObject();
+        console.log("User fetched:", user);
+
+        if (!user.tag || user.tag.length === 0) {
+            console.log("User has no associated tags.");
+            user.tag = [];
         } else {
-        
-            const rollNumber = userFromToken.data.surname;
+            console.log("Fetching tag names for user...");
+            const userTags = await Tag.find({ _id: { $in: user.tag } })
+                .select("_id title")
+                .lean();
+            console.log("Tags retrieved:", userTags);
 
-            if (!rollNumber) {
-                console.error("Neither roll number is in user data nor its a club.");
-                throw new AppError(401, "Sign in using Institute Account");
-            }
-
-            console.log("Checking if user already exists in database...");
-            let existingUser = await findUserWithEmail(userFromToken.data.mail);
-
-            if (!existingUser) {
-                console.log("User not found. Creating a new user...");
-                const department = await getDepartment(accessToken);
-
-                const userData = {
-                    name: userFromToken.data.displayName,
-                    email: userFromToken.data.mail,
-                    rollNumber: rollNumber,
-                    degree: userFromToken.data.jobTitle,
-                    semester: calculateSemester(rollNumber),
-                    department: department,
-                    role: "normal",
-                };
-
-                console.log("Validating new user data...");
-                const { error } = validateUser(userData);
-                if (error) {
-                    console.error("User data validation failed:", error.message);
-                    throw new AppError(400, error.message);
-                }
-
-                console.log("Saving new user to database...");
-                const newUser = new User(userData);
-                existingUser = await newUser.save();
-                console.log("New user created successfully:", existingUser);
-            }
-
-            console.log("Fetching user from database...");
-            const user = await User.findById(existingUser._id).lean();
-            console.log("User fetched:", user);
-
-            if (!user.tag || user.tag.length === 0) {
-                console.log("User has no associated tags.");
-                user.tag = [];
-            } else {
-                console.log("Fetching tag names for user...");
-                const userTags = await Tag.find({ _id: { $in: user.tag } })
-                    .select("_id title")
-                    .lean();
-                console.log("Tags retrieved:", userTags);
-
-                // ✅ Ensure the `tag` field is properly formatted
-                user.tag = userTags.map(tag => ({
-                    id: tag._id.toString(),
-                    name: tag.title,  // ✅ Make sure "title" is included
-                }));
-            }
-
-            userToBeUsed = user;
+            // ✅ Ensure the `tag` field is properly formatted
+            user.tag = userTags.map(tag => ({
+                id: tag._id.toString(),
+                name: tag.title,  // ✅ Make sure "title" is included
+            }));
         }
 
         // ✅ Store the refresh token
         if (RefreshToken) {
             console.log("Saving refresh token to the user record...");
-            userToBeUsed.refreshToken = RefreshToken;
-            await userToBeUsed.save();
+            existingUser.refreshToken = RefreshToken;
+            await existingUser.save();
             console.log("Refresh token saved successfully.");
         }
 
         console.log("Generating JWT token...");
-        const token = userToBeUsed.generateJWT();
+        const token = existingUser.generateJWT();
         console.log("JWT token generated successfully.");
 
-        console.log("Final user data before sending:", JSON.stringify(userToBeUsed, null, 2));
+        console.log("Final user data before sending:", JSON.stringify(user, null, 2));
 
         console.log("Redirecting to mobile app with user data...");
         return res.redirect(
             `iitgsync://success?token=${token}&user=${encodeURIComponent(
-                JSON.stringify(userToBeUsed)
+                JSON.stringify(user)
             )}`
         );
     } catch (error) {
@@ -210,24 +197,4 @@ export const logoutHandler = (req, res, next) => {
     });
     console.log("User logged out successfully.");
     res.redirect(process.env.CLIENT_URL);
-};
-
-export const getUser = async (req, res, next) => {
-  try {
-    console.log('fetching user from my db');
-
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
-
-    const club = await Club.findOne({ email });
-    if (club) res.status(200).json(club);
-
-    const user = await User.findOne({email})
-    if (user) res.status(200).json(user);
-
-    return res.status(404).json({ error: "Email not found" });
-  } catch (error) {
-    console.error("getuser error:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
 };

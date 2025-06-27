@@ -12,15 +12,30 @@ export const getUserWithEmail = async (req, res) => {
 
     try {
         console.log("Fetching user from database...");
-        const userDoc = await User.findOne({email})
+        const user = await User.findOne({email}).lean()
 
-        if (!userDoc) {
+        if (!user) {
             console.log("User not found.");
             return res.status(404).json({ message: 'Club not found' });
         }
-
-        const user = userDoc.toObject(); // Convert Mongoose doc to plain object
         console.log("user fetched:", user);
+
+        if (!user.tag || user.tag.length === 0) {
+            console.log("User has no associated tags.");
+            user.tag = [];
+        } else {
+            console.log("Fetching tag names for user...");
+            const userTags = await Tag.find({ _id: { $in: user.tag } })
+                .select("_id title")
+                .lean();
+            console.log("Tags retrieved:", userTags);
+
+            // ✅ Ensure the `tag` field is properly formatted
+            user.tag = userTags.map(tag => ({
+                id: tag._id.toString(),
+                name: tag.title,  // ✅ Make sure "title" is included
+            }));
+        }
 
         console.log("Final user data before sending:", JSON.stringify(user, null, 2));
         res.status(200).json(user);

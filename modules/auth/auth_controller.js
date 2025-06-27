@@ -15,7 +15,7 @@ const tenant_id = process.env.AZURE_TENANT_ID;
 import { findUserWithEmail, getUserFromToken, validateUser } from "../user/user.model.js";
 import User from "../user/user.model.js";
 import Tag from "../tag/tagModel.js"; // Import Tag model for fetching tag names
-import { findClubWithEmail } from "../club/clubModel.js";
+import Club, { findClubWithEmail } from "../club/clubModel.js";
 
 // Fetch department information using Microsoft Graph API
 const getDepartment = async (access_token) => {
@@ -175,7 +175,7 @@ export const mobileRedirectHandler = async (req, res, next) => {
         if (RefreshToken) {
             console.log("Saving refresh token to the user record...");
             userToBeUsed.refreshToken = RefreshToken;
-            await existingUser.save();
+            await userToBeUsed.save();
             console.log("Refresh token saved successfully.");
         }
 
@@ -210,4 +210,24 @@ export const logoutHandler = (req, res, next) => {
     });
     console.log("User logged out successfully.");
     res.redirect(process.env.CLIENT_URL);
+};
+
+export const getUser = async (req, res, next) => {
+  try {
+    console.log('fetching user from my db');
+
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Email is required" });
+
+    const club = await Club.findOne({ email });
+    if (club) res.status(200).json(club);
+
+    const user = await User.findOne({email})
+    if (user) res.status(200).json(user);
+
+    return res.status(404).json({ error: "Email not found" });
+  } catch (error) {
+    console.error("getuser error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 };

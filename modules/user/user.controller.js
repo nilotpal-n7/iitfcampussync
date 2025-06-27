@@ -7,6 +7,28 @@ export const getUser = async (req, res, next) => {
     return res.json(req.user);
 };
 
+export const getUserWithEmail = async (req, res) => {
+    const { email } = req.params;
+
+    try {
+        console.log("Fetching user from database...");
+        const userDoc = await User.findOne({email})
+
+        if (!userDoc) {
+            console.log("User not found.");
+            return res.status(404).json({ message: 'Club not found' });
+        }
+
+        const user = userDoc.toObject(); // Convert Mongoose doc to plain object
+        console.log("user fetched:", user);
+
+        console.log("Final user data before sending:", JSON.stringify(user, null, 2));
+        res.status(200).json(user);
+    } catch (err) {
+        console.error("Error fetching user details:", err);
+        res.status(500).json({ message: 'Error fetching user details', error: err });
+    }
+};
 
 //not used
 export const createUser = async (req, res) => {

@@ -137,7 +137,7 @@ export const getClubDetailWithEmail = async (req, res) => {
 
     try {
         console.log("Fetching club from database...");
-        const clubDoc = await Club.findOnene({email})
+        const clubDoc = await Club.findOne({email})
             .populate('events')               // Populate all event details
             .populate('merch');               // Populate all merch details
 

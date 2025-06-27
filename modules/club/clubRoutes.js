@@ -13,7 +13,8 @@ import {
     removeTagFromClub,
     followClub,
     addOrEditMember,
-    removeMember
+    removeMember,
+    getClubDetailWithEmail
 } from './clubController.js';
 import isAuthenticated from '../../middleware/isAuthenticated.js';
 
